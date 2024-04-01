@@ -1,0 +1,92 @@
+#include "BluetoothSerial.h"
+#define X_AXIS_PIN 32
+#define Y_AXIS_PIN 33
+#define SWITCH_PIN 25
+
+int left_x_val;
+int left_y_val;
+int switchpin;
+int right_y_val;  
+
+BluetoothSerial SerialBT;
+
+String MACadd = "C8:F0:9E:50:75:0A";//Write Drone side MAC address
+uint8_t address[6]  = {0xC8, 0xF0, 0x9E, 0x50, 0x75, 0x0A};//Write Drone side MAC address in HEX
+
+
+bool connected;
+
+void setup() {
+  Serial.begin(115200);
+  SerialBT.begin("ESP32test", true); 
+  Serial.println("The device started in master mode, make sure remote BT device is on!");
+  
+  // connect(address) is fast (upto 10 secs max), connect(name) is slow (upto 30 secs max) as it needs
+  // to resolve name to address first, but it allows to connect to different devices with the same name.
+  // Set CoreDebugLevel to Info to view devices bluetooth address and device names
+  connected = SerialBT.connect(address);
+  
+  if(connected) {
+    Serial.println("Connected Succesfully!");
+  } else {
+    while(!SerialBT.connected(10000)) {
+      Serial.println("Failed to connect. Make sure remote device is available and in range, then restart app."); 
+    }
+  }
+  // disconnect() may take upto 10 secs max
+  if (SerialBT.disconnect()) {
+    Serial.println("Disconnected Succesfully!");
+  }
+  // this would reconnect to the name(will use address, if resolved) or address used with connect(name/address).
+  SerialBT.connect();
+
+
+  pinMode(X_AXIS_PIN, INPUT);
+  pinMode(Y_AXIS_PIN, INPUT);
+  
+}
+
+uint8_t calculate_checksum(uint8_t *data) {
+  uint8_t checksum = 0;
+  checksum |= 0b11000000 & data[1];
+  checksum |= 0b00110000 & data[2];
+  return checksum;
+}
+
+uint8_t mapAndAdjustJoystickDeadBandValues(int value, bool reverse) {
+  if (value >= 2200) {
+    value = map(value, 2200, 4095, 127, 254);
+  } else if (value <= 1800) {
+    value = map(value, 1800, 0, 127, 0);
+  } else {
+    value = 127;
+  }
+
+  if (reverse) {
+    value = 254 - value;
+  }
+  return value;
+}
+
+void loop() {
+
+  uint8_t send_data[5];
+  
+
+
+  left_x_val = analogRead(X_AXIS_PIN) >> 4;//value 0-255 (">> 4" convert maximum value from 4095 to 255 )
+  left_y_val = analogRead(Y_AXIS_PIN) >> 4;//value 0-255 
+switchpin = digitalRead(SWITCH_PIN);
+
+
+ send_data[0] = 'T';
+  send_data[1] = left_x_val;
+  send_data[2] = left_y_val;
+send_data[3] = calculate_checksum(send_data);
+  SerialBT.write(send_data, 4);
+
+  delay(20);
+}
+
+
+SENDER
